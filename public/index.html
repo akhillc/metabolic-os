@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Metabolic OS</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1c1e26;
+      --surface2:    #252834;
+      --border:      #2e3140;
+      --text:        #e8eaf0;
+      --muted:       #7b7f94;
+      --carb-ok:     #f59e0b;
+      --carb-over:   #ef4444;
+      --protein:     #14b8a6;
+      --fat:         #8b5cf6;
+      --cal:         #6366f1;
+      --green:       #22c55e;
+      --amber:       #f59e0b;
+      --red:         #ef4444;
+      --radius:      14px;
+      --radius-sm:   8px;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 0 env(safe-area-inset-bottom, 16px);
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    .header {
+      padding: 16px 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .header .date-badge {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Eating window banner ─────────────────────────────────────────── */
+    .window-banner {
+      margin: 12px 16px 0;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .window-banner.fasting  { background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; }
+    .window-banner.open     { background: rgba(34, 197, 94, 0.12);  border: 1px solid rgba(34,197,94,0.3);  color: #86efac; }
+    .window-banner.closed   { background: rgba(239, 68, 68, 0.12);  border: 1px solid rgba(239,68,68,0.3);  color: #fca5a5; }
+
+    .window-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .fasting .window-dot  { background: #818cf8; }
+    .open    .window-dot  { background: #4ade80; animation: pulse 2s infinite; }
+    .closed  .window-dot  { background: #f87171; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ── Section ──────────────────────────────────────────────────────── */
+    .section {
+      margin: 16px 16px 0;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding-left: 2px;
+    }
+
+    /* ── Macro rings ──────────────────────────────────────────────────── */
+    .macro-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .macro-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .macro-card.full-width {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      padding: 14px 18px;
+    }
+
+    .ring-wrap {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      flex-shrink: 0;
+    }
+
+    .ring-wrap svg {
+      transform: rotate(-90deg);
+      overflow: visible;
+    }
+
+    .ring-bg {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 7;
+    }
+
+    .ring-fg {
+      fill: none;
+      stroke-width: 7;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.6s ease, stroke 0.3s ease;
+    }
+
+    .ring-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ring-value {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .ring-unit {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .macro-info { width: 100%; }
+    .macro-label {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .macro-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .macro-remaining {
+      font-size: 11px;
+      margin-top: 3px;
+    }
+
+    /* Full-width macro card (fat + calories) */
+    .fw-metrics {
+      display: flex;
+      gap: 24px;
+      margin-left: auto;
+    }
+    .fw-metric { text-align: center; }
+    .fw-metric .val { font-size: 20px; font-weight: 700; }
+    .fw-metric .lbl { font-size: 11px; color: var(--muted); }
+
+    /* ── Log meal form ────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .meal-form {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    input[type=text], input[type=number], textarea {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 14px;
+      padding: 9px 12px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--protein);
+    }
+
+    ::placeholder { color: var(--muted); }
+
+    .macro-inputs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .macro-input-wrap { position: relative; }
+    .macro-input-wrap input { padding-bottom: 20px; font-size: 15px; font-weight: 600; text-align: center; }
+    .macro-input-label {
+      position: absolute;
+      bottom: 6px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 10px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .btn {
+      padding: 11px 18px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.97); opacity: 0.85; }
+
+    .btn-primary {
+      background: var(--protein);
+      color: #0f1117;
+      width: 100%;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .btn-danger { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .btn-outline { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+    /* ── Meals list ───────────────────────────────────────────────────── */
+    .meal-list { list-style: none; }
+
+    .meal-item {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .meal-item:last-child { border-bottom: none; }
+
+    .meal-time {
+      font-size: 11px;
+      color: var(--muted);
+      width: 50px;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+
+    .meal-body { flex: 1; min-width: 0; }
+    .meal-desc {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .meal-macros {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .macro-pill {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .pill-carb  { background: rgba(245,158,11,0.15); color: #fcd34d; }
+    .pill-pro   { background: rgba(20,184,166,0.15);  color: #5eead4; }
+    .pill-fat   { background: rgba(139,92,246,0.15);  color: #c4b5fd; }
+    .pill-cal   { background: rgba(99,102,241,0.15);  color: #a5b4fc; }
+
+    .meal-delete {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 2px 4px;
+      opacity: 0.5;
+      transition: opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      flex-shrink: 0;
+    }
+    .meal-delete:hover { opacity: 1; }
+
+    .empty-state {
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Med schedule ─────────────────────────────────────────────────── */
+    .med-list { list-style: none; }
+
+    .med-item {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .med-item:last-child { border-bottom: none; }
+
+    .med-time-badge {
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      color: var(--muted);
+    }
+    .med-time-badge.active { border-color: var(--amber); color: var(--amber); }
+
+    .med-drugs {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .med-drug {
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .med-note {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Inventory ────────────────────────────────────────────────────── */
+    .collapsible-header {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .collapsible-header .title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .chevron {
+      font-size: 12px;
+      color: var(--muted);
+      transition: transform 0.2s;
+      display: inline-block;
+    }
+    .chevron.open { transform: rotate(180deg); }
+
+    .collapsible-body {
+      display: none;
+      border-top: 1px solid var(--border);
+    }
+    .collapsible-body.open { display: block; }
+
+    .inv-form {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inv-row { display: flex; gap: 8px; }
+
+    select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      padding: 9px 10px;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237b7f94' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    .inv-list { list-style: none; }
+
+    .inv-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .inv-item:last-child { border-bottom: none; }
+
+    .freshness-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-fresh      { background: var(--green); }
+    .dot-use_soon   { background: var(--amber); }
+    .dot-use_today  { background: var(--red); animation: pulse 1.5s infinite; }
+
+    .inv-info { flex: 1; min-width: 0; }
+    .inv-name { font-size: 13px; font-weight: 500; }
+    .inv-meta { font-size: 11px; color: var(--muted); }
+
+    .freshness-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Toast ────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1e2130;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 18px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: transform 0.3s ease;
+      z-index: 100;
+      white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Bottom spacer ────────────────────────────────────────────────── */
+    .spacer { height: 32px; }
+
+    /* ── Loading ──────────────────────────────────────────────────────── */
+    .loading { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Metabolic OS</h1>
+    <span class="date-badge" id="dateBadge">—</span>
+  </div>
+
+  <!-- Eating window banner -->
+  <div class="window-banner fasting" id="windowBanner">
+    <div class="window-dot"></div>
+    <span id="windowText">Loading…</span>
+  </div>
+
+  <!-- Macro rings -->
+  <div class="section">
+    <div class="section-title">Today's Macros</div>
+    <div class="macro-grid">
+
+      <!-- Carbs ring -->
+      <div class="macro-card" id="carbCard">
+        <div class="ring-wrap">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle class="ring-bg" cx="40" cy="40" r="33"/>
+            <circle class="ring-fg" id="carbRing" cx="40" cy="40" r="33"
+              stroke="#f59e0b"
+              stroke-dasharray="207.3"
+              stroke-dashoffset="207.3"/>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-value" id="carbVal">0</span>
+            <span class="ring-unit">g</span>
+          </div>
+        </div>
+        <div class="macro-info">
+          <div class="macro-label" style="color:#fcd34d">Net Carbs</div>
+          <div class="macro-sub" id="carbSub">0 / 50g</div>
+          <div class="macro-remaining" id="carbRem" style="color:var(--green)">50g remaining</div>
+        </div>
+      </div>
+
+      <!-- Protein ring -->
+      <div class="macro-card">
+        <div class="ring-wrap">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle class="ring-bg" cx="40" cy="40" r="33"/>
+            <circle class="ring-fg" id="proteinRing" cx="40" cy="40" r="33"
+              stroke="#14b8a6"
+              stroke-dasharray="207.3"
+              stroke-dashoffset="207.3"/>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-value" id="proteinVal">0</span>
+            <span class="ring-unit">g</span>
+          </div>
+        </div>
+        <div class="macro-info">
+          <div class="macro-label" style="color:#5eead4">Protein</div>
+          <div class="macro-sub" id="proteinSub">0 / 150g</div>
+          <div class="macro-remaining" id="proteinRem" style="color:var(--muted)">150g to go</div>
+        </div>
+      </div>
+
+      <!-- Fat + Calories (full width) -->
+      <div class="macro-card full-width">
+        <div style="flex:1">
+          <div class="macro-label" style="color:#c4b5fd; font-size:13px">Fat & Calories</div>
+          <div class="macro-sub" style="font-size:12px; margin-top:2px">No hard cap — tracked only</div>
+        </div>
+        <div class="fw-metrics">
+          <div class="fw-metric">
+            <div class="val" id="fatVal" style="color:#c4b5fd">0</div>
+            <div class="lbl">fat g</div>
+          </div>
+          <div class="fw-metric">
+            <div class="val" id="calVal" style="color:#a5b4fc">0</div>
+            <div class="lbl">kcal</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log a meal -->
+  <div class="section">
+    <div class="section-title">Log Meal</div>
+    <div class="card">
+      <div class="meal-form">
+        <input type="text" id="mealDesc" placeholder="Describe what you ate…" />
+        <div class="macro-inputs">
+          <div class="macro-input-wrap">
+            <input type="number" id="mealCarbs" placeholder="0" min="0" step="0.5" />
+            <div class="macro-input-label" style="color:#fcd34d">carbs g</div>
+          </div>
+          <div class="macro-input-wrap">
+            <input type="number" id="mealProtein" placeholder="0" min="0" step="0.5" />
+            <div class="macro-input-label" style="color:#5eead4">protein g</div>
+          </div>
+          <div class="macro-input-wrap">
+            <input type="number" id="mealFat" placeholder="0" min="0" step="0.5" />
+            <div class="macro-input-label" style="color:#c4b5fd">fat g</div>
+          </div>
+          <div class="macro-input-wrap">
+            <input type="number" id="mealCal" placeholder="0" min="0" step="1" />
+            <div class="macro-input-label" style="color:#a5b4fc">kcal</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="logMeal()">Log Meal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Today's meals -->
+  <div class="section">
+    <div class="section-title">Today's Meals</div>
+    <div class="card">
+      <ul class="meal-list" id="mealList">
+        <li class="loading">Loading…</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Medication schedule -->
+  <div class="section">
+    <div class="section-title">Medication Schedule</div>
+    <div class="card">
+      <ul class="med-list">
+        <li class="med-item">
+          <span class="med-time-badge" id="medBadge7pm">7:00 PM</span>
+          <div class="med-drugs">
+            <span class="med-drug">Metformin ER 500mg</span>
+            <span class="med-drug">Atorvastatin 20mg</span>
+            <span class="med-drug">Omega-3s 2 × 690mg</span>
+            <span class="med-note">Take with food</span>
+          </div>
+        </li>
+        <li class="med-item">
+          <span class="med-time-badge" id="medBadge10pm">10:00 PM</span>
+          <div class="med-drugs">
+            <span class="med-drug">Magnesium glycinate 350mg</span>
+            <span class="med-drug">Vitamin D 25mcg</span>
+            <span class="med-note">Bedtime</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Kitchen inventory -->
+  <div class="section">
+    <div class="section-title">Kitchen Inventory</div>
+    <div class="card">
+      <div class="collapsible-header" onclick="toggleInventory()">
+        <span class="title" id="invTitle">Inventory</span>
+        <span class="chevron" id="invChevron">▼</span>
+      </div>
+      <div class="collapsible-body" id="invBody">
+        <!-- Add item form -->
+        <div class="inv-form">
+          <input type="text" id="invName" placeholder="Item name" />
+          <div class="inv-row">
+            <select id="invCat">
+              <option value="protein">Protein</option>
+              <option value="vegetables">Vegetables</option>
+              <option value="dairy">Dairy</option>
+              <option value="pantry" selected>Pantry</option>
+              <option value="condiments">Condiments</option>
+              <option value="snacks">Snacks</option>
+            </select>
+            <select id="invFreshness">
+              <option value="fresh">Fresh</option>
+              <option value="use_soon">Use Soon</option>
+              <option value="use_today">Use Today</option>
+            </select>
+          </div>
+          <input type="text" id="invQty" placeholder="Quantity (optional)" />
+          <button class="btn btn-primary btn-sm" onclick="addInventoryItem()" style="font-size:13px">Add Item</button>
+        </div>
+        <ul class="inv-list" id="invList">
+          <li class="loading">Loading…</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const TARGETS = { net_carbs: 50, protein: 150 };
+const CIRC = 2 * Math.PI * 33; // 207.35
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Eating window ─────────────────────────────────────────────────────────────
+function updateEatingWindow() {
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  const banner = document.getElementById('windowBanner');
+  const text   = document.getElementById('windowText');
+  const badge  = document.getElementById('medBadge7pm');
+  const badge2 = document.getElementById('medBadge10pm');
+
+  banner.className = 'window-banner';
+
+  if (h < 12) {
+    banner.classList.add('fasting');
+    text.textContent = 'Fasting — eating window opens at noon';
+  } else if (h < 20) {
+    banner.classList.add('open');
+    const closeH = 20 - h;
+    const closeM = Math.floor(closeH * 60);
+    text.textContent = `Eating window open — ${closeM}m until it closes at 8pm`;
+  } else {
+    banner.classList.add('closed');
+    text.textContent = 'Eating window closed — fasting until noon';
+  }
+
+  // Highlight med times
+  const hour = now.getHours();
+  if (hour >= 19 && hour < 20) badge.classList.add('active');
+  else badge.classList.remove('active');
+  if (hour >= 22 && hour < 23) badge2.classList.add('active');
+  else badge2.classList.remove('active');
+}
+
+// ── Date badge ────────────────────────────────────────────────────────────────
+function updateDateBadge() {
+  const now = new Date();
+  document.getElementById('dateBadge').textContent = now.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric'
+  });
+}
+
+// ── Macro rings ───────────────────────────────────────────────────────────────
+function setRing(ringId, value, target, color, overColor) {
+  const ring = document.getElementById(ringId);
+  const pct  = Math.min(value / target, 1);
+  const over = value > target;
+  ring.style.stroke = over ? overColor : color;
+  ring.style.strokeDashoffset = CIRC * (1 - pct);
+}
+
+function updateMacros(totals) {
+  const { net_carbs = 0, protein = 0, fat = 0, calories = 0 } = totals;
+
+  document.getElementById('carbVal').textContent    = Math.round(net_carbs);
+  document.getElementById('proteinVal').textContent = Math.round(protein);
+  document.getElementById('fatVal').textContent     = Math.round(fat);
+  document.getElementById('calVal').textContent     = Math.round(calories);
+
+  document.getElementById('carbSub').textContent    = `${Math.round(net_carbs)} / ${TARGETS.net_carbs}g`;
+  document.getElementById('proteinSub').textContent = `${Math.round(protein)} / ${TARGETS.protein}g`;
+
+  const carbRem    = TARGETS.net_carbs - net_carbs;
+  const proteinRem = TARGETS.protein - protein;
+
+  const carbRemEl = document.getElementById('carbRem');
+  if (carbRem <= 0) {
+    carbRemEl.style.color = 'var(--red)';
+    carbRemEl.textContent = `${Math.abs(Math.round(carbRem))}g over budget`;
+  } else {
+    carbRemEl.style.color = carbRem < 10 ? 'var(--amber)' : 'var(--green)';
+    carbRemEl.textContent = `${Math.round(carbRem)}g remaining`;
+  }
+
+  const proRemEl = document.getElementById('proteinRem');
+  if (proteinRem <= 0) {
+    proRemEl.style.color = 'var(--green)';
+    proRemEl.textContent = 'Target hit ✓';
+  } else {
+    proRemEl.style.color = 'var(--muted)';
+    proRemEl.textContent = `${Math.round(proteinRem)}g to go`;
+  }
+
+  setRing('carbRing',    net_carbs, TARGETS.net_carbs, '#f59e0b', '#ef4444');
+  setRing('proteinRing', protein,   TARGETS.protein,   '#14b8a6', '#14b8a6');
+}
+
+// ── Meals list ────────────────────────────────────────────────────────────────
+function renderMeals(meals) {
+  const list = document.getElementById('mealList');
+  if (!meals.length) {
+    list.innerHTML = '<li class="empty-state">No meals logged today</li>';
+    return;
+  }
+  list.innerHTML = meals.map(m => `
+    <li class="meal-item">
+      <span class="meal-time">${m.time}</span>
+      <div class="meal-body">
+        <div class="meal-desc" title="${esc(m.description)}">${esc(m.description)}</div>
+        <div class="meal-macros">
+          ${m.net_carbs ? `<span class="macro-pill pill-carb">${m.net_carbs}g carbs</span>` : ''}
+          ${m.protein   ? `<span class="macro-pill pill-pro">${m.protein}g pro</span>`   : ''}
+          ${m.fat       ? `<span class="macro-pill pill-fat">${m.fat}g fat</span>`       : ''}
+          ${m.calories  ? `<span class="macro-pill pill-cal">${m.calories} kcal</span>` : ''}
+        </div>
+      </div>
+      <button class="meal-delete" onclick="deleteMeal(${m.id})" title="Delete">✕</button>
+    </li>
+  `).join('');
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Load today ────────────────────────────────────────────────────────────────
+async function loadToday() {
+  try {
+    const data = await fetch('/api/meals/today').then(r => r.json());
+    updateMacros(data.totals);
+    renderMeals(data.meals);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ── Log meal ──────────────────────────────────────────────────────────────────
+async function logMeal() {
+  const desc    = document.getElementById('mealDesc').value.trim();
+  const carbs   = parseFloat(document.getElementById('mealCarbs').value)   || 0;
+  const protein = parseFloat(document.getElementById('mealProtein').value) || 0;
+  const fat     = parseFloat(document.getElementById('mealFat').value)     || 0;
+  const cal     = parseFloat(document.getElementById('mealCal').value)     || 0;
+
+  if (!desc) { toast('Add a meal description first'); return; }
+
+  try {
+    const res = await fetch('/api/meals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc, net_carbs: carbs, protein, fat, calories: cal }),
+    });
+    if (!res.ok) throw new Error();
+
+    // Clear form
+    ['mealDesc','mealCarbs','mealProtein','mealFat','mealCal'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+
+    toast('Meal logged');
+    loadToday();
+  } catch {
+    toast('Error logging meal');
+  }
+}
+
+// ── Delete meal ───────────────────────────────────────────────────────────────
+async function deleteMeal(id) {
+  try {
+    await fetch(`/api/meals/${id}`, { method: 'DELETE' });
+    loadToday();
+  } catch {
+    toast('Error deleting meal');
+  }
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+function toggleInventory() {
+  const body    = document.getElementById('invBody');
+  const chevron = document.getElementById('invChevron');
+  const open    = body.classList.toggle('open');
+  chevron.classList.toggle('open', open);
+  if (open) loadInventory();
+}
+
+const FRESHNESS_CYCLE = ['fresh', 'use_soon', 'use_today'];
+const FRESHNESS_LABEL = { fresh: 'Fresh', use_soon: 'Use Soon', use_today: 'Use Today!' };
+const FRESHNESS_DOT   = { fresh: 'dot-fresh', use_soon: 'dot-use_soon', use_today: 'dot-use_today' };
+
+function renderInventory(items) {
+  const list  = document.getElementById('invList');
+  const title = document.getElementById('invTitle');
+  const urgent = items.filter(i => i.freshness !== 'fresh').length;
+
+  title.textContent = `Inventory (${items.length})${urgent ? ` — ${urgent} need attention` : ''}`;
+
+  if (!items.length) {
+    list.innerHTML = '<li class="empty-state">No items in inventory</li>';
+    return;
+  }
+
+  list.innerHTML = items.map(i => `
+    <li class="inv-item">
+      <div class="freshness-dot ${FRESHNESS_DOT[i.freshness] || 'dot-fresh'}"></div>
+      <div class="inv-info">
+        <div class="inv-name">${esc(i.name)}</div>
+        <div class="inv-meta">${esc(i.category)}${i.quantity ? ' · ' + esc(i.quantity) : ''}</div>
+      </div>
+      <button class="freshness-btn" onclick="cycleFreshness(${i.id}, '${i.freshness}')">${FRESHNESS_LABEL[i.freshness]}</button>
+      <button class="meal-delete" onclick="deleteInventoryItem(${i.id})" title="Delete">✕</button>
+    </li>
+  `).join('');
+}
+
+async function loadInventory() {
+  try {
+    const items = await fetch('/api/inventory').then(r => r.json());
+    renderInventory(items);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function addInventoryItem() {
+  const name      = document.getElementById('invName').value.trim();
+  const category  = document.getElementById('invCat').value;
+  const freshness = document.getElementById('invFreshness').value;
+  const quantity  = document.getElementById('invQty').value.trim();
+
+  if (!name) { toast('Add an item name first'); return; }
+
+  try {
+    await fetch('/api/inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, category, freshness, quantity }),
+    });
+    document.getElementById('invName').value = '';
+    document.getElementById('invQty').value  = '';
+    toast(`Added ${name}`);
+    loadInventory();
+  } catch {
+    toast('Error adding item');
+  }
+}
+
+async function cycleFreshness(id, current) {
+  const idx  = FRESHNESS_CYCLE.indexOf(current);
+  const next = FRESHNESS_CYCLE[(idx + 1) % FRESHNESS_CYCLE.length];
+  try {
+    await fetch(`/api/inventory/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ freshness: next }),
+    });
+    loadInventory();
+  } catch {
+    toast('Error updating item');
+  }
+}
+
+async function deleteInventoryItem(id) {
+  try {
+    await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+    loadInventory();
+  } catch {
+    toast('Error deleting item');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateDateBadge();
+updateEatingWindow();
+loadToday();
+
+// Refresh every 60s (eating window countdown + any external meal logs)
+setInterval(() => {
+  updateEatingWindow();
+  loadToday();
+}, 60_000);
+</script>
+</body>
+</html>
