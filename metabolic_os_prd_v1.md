@@ -453,14 +453,14 @@ These are the remaining agents in the system. Each will get a full PRD once the 
 
 ### Phase 1: Foundation (This Week)
 - [x] Claude Project as hub (active)
-- [x] Daily nudge reminders (3 set, add 4th at 3pm)
+- [ ] Daily nudge reminders (3 set, add 4th at 3pm)
 - [x] Dexcom G7 active
-- [ ] **BUILD: Macro Dashboard artifact** with persistent storage
+- [x] **BUILD: Macro Dashboard artifact** with persistent storage
 - [ ] **BUILD: Kitchen inventory** in persistent storage
 - [ ] Establish daily logging habit via conversation
 
 ### Phase 2: Data Layer (Week 2-3)
-- [ ] **BUILD: Dexcom G7 data fetcher** (pydexcom script)
+- [x] **BUILD: Dexcom G7 data fetcher** (pydexcom script) -- pydexcom doesn't support G7, use screenshot workflow...
 - [ ] Validate Cronometer free tier workflow
 - [ ] Decide on Cronometer Gold upgrade based on logging friction
 - [ ] **BUILD: Enhanced nudge system** with iOS Shortcuts + deep links
